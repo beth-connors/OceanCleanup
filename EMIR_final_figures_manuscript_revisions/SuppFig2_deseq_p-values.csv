@@ -1,0 +1,33 @@
+"week","kingdom","taxa","padj","log2FoldChange"
+1,"bacteria","Sphingomonadales",0.0163046553169884,-8.33174903652827
+1,"bacteria","Erythrobacter sp. SCSIO 43205",0.0235558586781077,-7.50771809805343
+1,"bacteria","Citromicrobium sp. JL477",0.0235558586781077,-8.53701273209228
+2,"bacteria","Sphingobacteriaceae",5.07657124572391e-13,-24.4715980200802
+2,"bacteria","Hyphomonas",5.07657124572391e-13,-24.979714501342
+2,"bacteria","Pseudohalocynthiibacter aestuariivivens",5.07657124572391e-13,-25.0800815242795
+2,"bacteria","Tateyamaria omphalii",4.0967619336074e-09,-22.1322335474779
+4,"bacteria","Tateyamaria omphalii",0.0377091933146768,-9.16502611757275
+4,"bacteria","Parvularcula bermudensis HTCC2503",0.0413426827227721,-7.50999173935141
+6,"bacteria","Hyphomonas",0.0190589325104136,-8.07687669983544
+6,"bacteria","Spirochaeta thermophila",0.0217573940498516,7.07297940639917
+8,"bacteria","Celeribacter indicus",0.0104428781479289,-7.89715192266331
+12,"bacteria","Flavobacteriaceae",4.52796608397575e-08,-22.3111629504154
+12,"bacteria","Aequoribacter fuscus",0.00614859793351822,-7.10532804811619
+12,"bacteria","Pukyongiella litopenaei",0.010520897863716,-7.42354033246873
+12,"bacteria","Haliscomenobacter hydrossis DSM 1100",0.0254446577959216,5.17576600429609
+16,"bacteria","Hyphomonas",5.07294012003306e-05,10.0191115197141
+16,"bacteria","Sphingorhabdus lutea",0.00167205306912204,8.87022099456929
+16,"bacteria","Hyphomonas",0.00458277797756975,-6.27254182701922
+16,"bacteria","Micavibrio aeruginosavorus",0.0167824795327053,-5.45842380298356
+16,"bacteria","Wenzhouxiangella marina",0.0170189241543965,-7.65835954602442
+16,"bacteria","Micavibrio aeruginosavorus",0.0170189241543965,7.8561193224426
+43,"bacteria","Celeribacter indicus",1.49913549423415e-10,-23.5948818854696
+43,"bacteria","Haliscomenobacter hydrossis DSM 1100",2.92742164888257e-10,-22.6368532068487
+2,"eukaryote","Raphid pennate",0.00533396678738808,-9.21442684950435
+3,"eukaryote","Hemigastrostyla enigmatica",4.97704191460982e-09,-22.5358208622006
+6,"eukaryote","Euplotes raikovi",1.71127757493343e-08,-21.9322275051898
+6,"eukaryote","Katablepharidales XX sp.",0.0122388777352834,-8.22732651298052
+20,"eukaryote","Bacillaria paxillifer",1.87404425414754e-09,-23.3208067710443
+36,"eukaryote","Cercozoa",9.45196948650874e-09,-26.4721073909253
+36,"eukaryote","Araphid pennate X sp.",1.80518796598078e-06,-22.685715071678
+52,"eukaryote","Holosticha bradburyae",7.8661560774956e-10,-22.6120911139229

@@ -1,0 +1,649 @@
+---
+title: "heat_map"
+author: "Beth"
+date: "1/23/2021"
+output: html_document
+---
+Figure 1: bacterial heatmap
+```{r}
+load('bacteria_DNA.RData')
+
+library(ComplexHeatmap)
+library(circlize)
+library(viridis)
+library(R.utils)
+
+#set colors
+col_fun = colorRamp2(c(1,2,3,4), c("#0db5e6",  "#27ab19", "#ffc000", "#d31f2a"))
+col2 = colorRamp2(c(0,52), c("white",  "#0db5e6"))
+col3 =  c("Film" = "#0db5e6", "Rod" = "#27ab19", "Cube" = "#ffc000")
+
+#take log of AA
+logAA <- log(unique.at,10)
+logAA[logAA == -Inf] <- 0
+
+#only take top 20 taxa 
+top20 = sort(colSums(logAA[,1:length(logAA)]), decreasing = TRUE)[1:20]
+top20_names <- names(top20)
+
+logAA_20 <- subset(logAA, select = top20_names)
+
+#rename with maps
+lab.Row <- maps[colnames(logAA_20), 'taxon']
+colnames(logAA_20) <- lab.Row
+
+#set row order by week
+metadata_at[order(metadata_at$week),]
+idx <- match(metadata_at$X16S_fasta_name,rownames(logAA_20))
+logAA_20  <- logAA_20[idx , ]
+
+#transform AA for heatmap
+logAA <- t(logAA_20)
+logAA_m <- as.matrix(logAA)
+
+#italicize names 
+row_labels = paste0("*", rownames(logAA_m), "*")
+metadata_at$week2 <- metadata_at$week+1
+#capitalize things
+metadata_at$plastic <- toupper(c(metadata_at$plastic))
+names(metadata_at)[names(metadata_at) == "shape"] <- "Shape"
+names(metadata_at)[names(metadata_at) == "week"] <- "Week"
+metadata_at$Shape<-capitalize(metadata_at$Shape)
+
+#make top graphs for heatmap
+ha = HeatmapAnnotation(Week = metadata_at$Week, Shape = metadata_at$Shape, col = list(Week = col2, Shape = col3))
+
+#heatmap
+setEPS()
+postscript("Fig1_bacteria_heatmap.eps",width=8.15, height = 5.03)
+ht_list <- Heatmap(logAA_m, col = col_fun, show_column_names = F, row_labels = gt_render(row_labels), row_names_gp = gpar(fontsize = 10), show_column_dend = F,show_row_dend = F, column_split = factor(metadata_at$plastic, levels = c("LDPE", "HDPE","PP")),column_order = order(as.numeric(metadata_at$Week)), name = "log(Rel Abun)", top_annotation = ha)
+ComplexHeatmap::draw(ht_list, merge_legend = TRUE)
+dev.off()
+```
+
+Figure 2: bacterial NMDS and boxplot
+```{r}
+load('bacteria_DNA.RData')
+
+library(vegan)
+library(ggplot2)
+library(viridis)
+library("ggrepel")  
+library(cowplot)
+library(dplyr)
+library(metagenomeSeq)
+
+#take out time point 0 and outliers
+outliers <- c("pp_film_m_p1_tp0_16S.exp.","LDPE_CUBE_M_P1_TP12_16S.16S.exp.", "HDPE_FILM_M_P1_TP14_16S.16S.exp.","pp_rod_m_p1_tp0_16S.exp.","hdpe_film_m_p1_tp0_16S.exp.", "hdpe_rod_m_p1_tp0_16S.exp.", "ldpe_cube_m_p1_tp0_16S.exp.","ldpe_film_m_p1_tp0_16S.exp.", "ldpe_rod_m_p1_tp0_16S.exp.", "pp_cube_m_p1_tp0_16S.exp.", "hdpe_cube_m_p1_tp0_16S.exp.", "HDPE_FILM_M_P1_TP15_16S.16S.exp.", "HDPE_ROD_M_P1_TP10_16S.16S.exp.")
+
+unique.ato <- unique.at[!(row.names(unique.at) %in% outliers),]
+unique.ato <- unique.ato[,which(colSums(unique.ato) > 100)]
+unique.ato <- unique.ato[which(rowSums(unique.ato) > 100),]
+metadata_ato <- metadata_at[(row.names(metadata_at) %in% rownames(unique.ato)),]
+
+set.seed(66)
+#make relative abun
+#usc <- unique.ato/rowSums(unique.ato)
+#m_u = as.matrix(usc)
+
+#make CSS scaling
+metaSeqObject = newMRexperiment(t(unique.ato)) 
+metaSeqObject_CSS  = cumNorm(metaSeqObject, p=cumNormStatFast(metaSeqObject))
+m_u = data.frame(t(MRcounts(metaSeqObject_CSS, norm=TRUE, log=TRUE)))
+
+nmds = metaMDS(m_u, distance = "bray", maxit = 50, k =2)
+
+#extract NMDS scores (x and y coordinates)
+data.scores = as.data.frame(scores(nmds)$sites)
+
+#get it to match order of metadata
+idx <- match(metadata_ato$X16S_fasta_name,rownames(data.scores))
+data.scores  <- data.scores[idx , ]
+
+#add in metadata
+data.scores$plastic = metadata_ato$plastic
+data.scores$shape = metadata_ato$shape
+data.scores$location = metadata_ato$bottom
+data.scores$week = metadata_ato$week
+
+#add in average datascores
+data.scores.avg <- data.scores %>% group_by(week) %>% 
+  summarise(mean_NMDS1=mean(NMDS1),
+            mean_NMDS2= mean(NMDS2),
+            .groups = 'drop') %>%
+  as.data.frame()
+
+#capitalize things
+data.scores$plastic <- toupper(c(data.scores$plastic))
+names(data.scores)[names(data.scores) == "shape"] <- "Shape"
+names(data.scores)[names(data.scores) == "week"] <- "Week"
+names(data.scores.avg)[names(data.scores.avg) == "week"] <- "Week"
+names(data.scores)[names(data.scores) == "plastic"] <- "Plastic"
+
+library(R.utils)
+data.scores$Shape<-capitalize(data.scores$Shape)
+
+
+A <- ggplot() + 
+    geom_point(data.scores, mapping = aes(x = NMDS1, y = NMDS2, shape = Shape, color = Plastic, size = Week)) + 
+    geom_label_repel(data.scores.avg, mapping = aes(x = mean_NMDS1, y = mean_NMDS2, label = Week)) + 
+    theme_bw() + 
+    ggtitle("16S NMDS") + 
+    scale_size_continuous(range = size_range) +
+    scale_color_viridis(discrete=T) +
+    theme_bw() +
+    theme(text = element_text(size = 17)) 
+
+setEPS()
+postscript("GraphAbs_bacteria_NMDS.eps",width=8.15, height = 5.03)
+A
+dev.off()
+
+
+#make box plot
+box.plot <- transform(data.frame(logAA_m[2,]))
+colnames(box.plot) <- c("rel_abun_Rhodo")
+box.plot$Shape <- metadata_at$shape
+box.plot$Week <- metadata_at$week
+box.plot$Plastic <- metadata_at$plastic
+box.plot$Plastic <- toupper(c(box.plot$Plastic))
+
+#boxplot
+B<- ggplot(box.plot, aes(x=factor(Week), y=rel_abun_Rhodo, fill=Plastic)) + 
+    geom_boxplot() +theme_bw()+   scale_fill_viridis(discrete=T) +
+  ylab("log(Relative Abundance of Qipengyuania)")+xlab("Week")+
+    theme(text = element_text(size = 15)) 
+
+setEPS()
+postscript("Fig2_bacteria_NMDS_relQ.eps",width=8.15, height = 10.06)
+plot_grid(A,B,labels = c('A', 'B'), ncol=1)
+dev.off()
+
+#get data and data scores to match to run stats
+idx <- match(rownames(data.scores), rownames(m_u))
+m_u  <- m_u[idx , ]
+
+#run adonis
+adonis2(m_u ~ Plastic + factor(Week) + Shape, data = data.scores, permutations = 199, method = "bray")
+
+adonis2(m_u ~ PAR_Den_PM + DOppm_PM + AirTemp_PM, data = metadata_ato, permutations = 199, method = "bray")
+
+#betadisper
+dis <- vegdist(m_u,method="bray")
+plastic <- betadisper(dis, data.scores$Plastic)
+anova(plastic)
+
+shape <- betadisper(dis, data.scores$Shape)
+anova(shape)
+
+Week <- betadisper(dis, data.scores$Week)
+anova(Week)
+
+#shannon diversity on random subset of ASVs
+rand <- unique.ato[,sample(1:ncol(unique.ato),500)]
+shannondiv <- diversity(rand, index = "shannon")
+mean(shannondiv)
+sd(shannondiv)
+
+sppdiv_aov <- aov(shannondiv ~shape + plastic, data = metadata_ato)
+summary(sppdiv_aov)
+
+
+```
+
+Figure 3: eukaryotic heatmap
+```{r}
+load('eukaryotic_DNA.RData')
+
+library(ComplexHeatmap)
+library(circlize)
+library(viridis)
+
+#set colors
+col_fun = colorRamp2(c(1,2,3,4), c("#0db5e6",  "#27ab19", "#ffc000", "#d31f2a"))
+col2 = colorRamp2(c(0,52), c("white",  "#0db5e6"))
+col3 =  c("Film" = "#0db5e6", "Rod" = "#27ab19", "Cube" = "#ffc000")
+
+#take log of AA
+logAA <- log(unique.at,10)
+logAA[logAA == -Inf] <- 0
+
+#only take top 20 taxa 
+top20 = sort(colSums(logAA[,1:length(logAA)]), decreasing = TRUE)[1:20]
+top20_names <- names(top20)
+
+logAA_20 <- subset(logAA, select = top20_names)
+
+#rename with maps
+lab.Row <- maps[colnames(logAA_20), 'taxon']
+colnames(logAA_20) <- lab.Row
+
+#set row order by week
+metadata_at[order(metadata_at$week),]
+idx <- match(metadata_at$X18S_fasta_name,rownames(logAA_20))
+logAA_20  <- logAA_20[idx , ]
+
+#transform AA for heatmap
+logAA <- t(logAA_20)
+logAA_m <- as.matrix(logAA)
+
+#remove _ in names
+row_labels = sub("_", " ", rownames(logAA_m))
+#italicize names 
+row_labels = paste0("*", row_labels, "*")
+
+#capitalize things
+metadata_at$plastic <- toupper(c(metadata_at$plastic))
+names(metadata_at)[names(metadata_at) == "shape"] <- "Shape"
+names(metadata_at)[names(metadata_at) == "week"] <- "Week"
+metadata_at$Shape<-capitalize(metadata_at$Shape)
+
+#make top graphs for heatmap
+ha = HeatmapAnnotation(Week = metadata_at$Week, Shape = metadata_at$Shape, col = list(Week = col2, Shape = col3))
+
+#heatmap
+setEPS()
+postscript("Fig3_eukaryotic_heatmap.eps",width=8.15, height = 5.03)
+ht_list <- Heatmap(logAA_m, col = col_fun, show_column_names = F, row_labels = gt_render(row_labels), row_names_gp = gpar(fontsize = 10), show_column_dend = F, show_row_dend = F, column_split = factor(metadata_at$plastic, levels = c("LDPE", "HDPE","PP")),column_order = order(as.numeric(metadata_at$Week)), name = "log(Rel Abun)", top_annotation = ha)
+ComplexHeatmap::draw(ht_list, merge_legend = TRUE)
+dev.off()
+
+```
+
+Figure 4: eukaryotic NMDS and boxplot 
+```{r}
+load('eukaryotic_DNA.RData')
+library(vegan)
+library(ggplot2)
+library(viridis)
+library(pairwiseAdonis)
+library("ggrepel")  
+library(cowplot)
+
+#take out TP0 and outliers
+outliers <- c("LDPE_CUBE_M_P1_TP12_18S.18S.exp.", "HDPE_FILM_M_P1_TP14_18S.18S.exp.","pp_rod_m_p1_tp0_18S.exp.","hdpe_film_m_p1_tp0_18S.exp.", "hdpe_rod_m_p1_tp0_18S.exp.", "ldpe_cube_m_p1_tp0_18S.exp.", "ldpe_film_m_p1_tp0_18S.exp.", "ldpe_rod_m_p1_tp0_18S.exp.", "pp_cube_m_p1_tp0_18S.exp.", "hdpe_cube_m_p1_tp0_18S.exp.","pp_film_m_p1_tp0_18S.exp.")
+
+unique.ato <- unique.at[!(row.names(unique.at) %in% outliers),]
+unique.ato <- unique.ato[,which(colSums(unique.ato) > 10)]
+unique.ato <- unique.ato[which(rowSums(unique.ato) > 100),]
+metadata_ato <- metadata_at[(row.names(metadata_at) %in% rownames(unique.ato)),]
+
+set.seed(66)
+#make relative abun
+#usc <- unique.ato/rowSums(unique.ato)
+#m_u = as.matrix(usc)
+
+#make CSS scaling
+metaSeqObject = newMRexperiment(t(unique.ato)) 
+metaSeqObject_CSS  = cumNorm(metaSeqObject, p=cumNormStatFast(metaSeqObject))
+m_u = data.frame(t(MRcounts(metaSeqObject_CSS, norm=TRUE, log=TRUE)))
+
+nmds = metaMDS(m_u, distance = "bray", maxit = 50, halfchange = F)
+nmds
+
+
+#extract NMDS scores (x and y coordinates)
+data.scores = as.data.frame(scores(nmds)$sites)
+
+#get it to match order of metadata
+idx <- match(metadata_ato$X18S_fasta_name,rownames(data.scores))
+data.scores  <- data.scores[idx , ]
+
+#add in metadata
+data.scores$plastic = metadata_ato$plastic
+data.scores$shape = metadata_ato$shape
+data.scores$time = metadata_ato$time_point
+data.scores$week = metadata_ato$week
+
+data.scores.avg <- data.scores %>% group_by(week) %>% 
+  summarise(mean_NMDS1=mean(NMDS1),
+            mean_NMDS2= mean(NMDS2),
+            .groups = 'drop') %>%
+            as.data.frame()
+
+
+size_range = c(1,5)
+set.seed(99)
+
+#capitalize things
+data.scores$plastic <- toupper(c(data.scores$plastic))
+names(data.scores)[names(data.scores) == "shape"] <- "Shape"
+names(data.scores)[names(data.scores) == "week"] <- "Week"
+names(data.scores.avg)[names(data.scores.avg) == "week"] <- "Week"
+names(data.scores)[names(data.scores) == "plastic"] <- "Plastic"
+library(R.utils)
+data.scores$Shape<-capitalize(data.scores$Shape)
+
+
+A<- ggplot(data.scores, aes(x = NMDS1, y = NMDS2)) + 
+  geom_point(aes(shape = Shape, color = Plastic, size = Week)) + 
+  geom_label_repel(data.scores.avg, mapping = aes(x = mean_NMDS1, y = mean_NMDS2, label = Week)) + theme_bw() + 
+  ggtitle("18S NMDS") +
+  scale_size_continuous(range = size_range) +
+  scale_color_viridis(discrete=T) +
+    theme(text = element_text(size = 17)) 
+
+# create a data frame
+box.plot <- transform(data.frame(logAA_m[1,]))
+colnames(box.plot) <- c("rel_abun_Nit")
+box.plot$Shape <- metadata_at$shape
+box.plot$Week <- metadata_at$week
+box.plot$Plastic <- metadata_at$plastic
+box.plot$Plastic <- toupper(c(box.plot$Plastic))
+
+
+# grouped boxplot
+B <- ggplot(box.plot, aes(x=factor(Week), y=rel_abun_Nit, fill=Plastic)) + 
+    geom_boxplot() +theme_bw()+   scale_fill_viridis(discrete=T) +
+  ylab("log(Relative Abundance of Nitzschia)")+xlab("Week") +
+    theme(text = element_text(size = 17)) 
+
+setEPS()
+postscript("Fig4_eukaryotic_NMDS_relN.eps",width=8.15, height = 10.06)
+plot_grid(A,B,labels = c('A', 'B'), ncol=1)
+dev.off()
+
+
+#####stats####
+#get data and data scores to match to run stats
+idx <- match(rownames(data.scores), rownames(m_u))
+m_u  <- m_u[idx , ]
+
+#run adonis
+adonis2(m_u ~ Plastic + factor(Week) + Shape, data = data.scores, permutations = 199, method = "bray")
+
+#env variables are missing from early samples so I need to remove them for this analysis
+metadata_env <- metadata_ato[complete.cases(metadata_ato$WaterTemp_PM),]
+m_u2 <- m_u[(row.names(m_u) %in% metadata_env$X18S_fasta_name),]
+
+adonis2(m_u2 ~ PAR_Den_PM + DOppm_PM + WaterTemp_PM + AirTemp_PM, data = metadata_env, permutations = 199, method = "bray")
+
+#betadisper
+dis <- vegdist(m_u,method="bray")
+plastic <- betadisper(dis, data.scores$Plastic)
+anova(plastic)
+
+shape <- betadisper(dis, data.scores$Shape)
+anova(shape)
+
+Week <- betadisper(dis, data.scores$Week)
+anova(Week)
+
+#shannon diversity on random subset of ASVs
+rand <- unique.ato[,sample(1:ncol(unique.ato),500)]
+shannondiv <- diversity(rand, index = "shannon")
+mean(shannondiv)
+sd(shannondiv)
+
+sppdiv_aov <- aov(shannondiv ~ week + shape + plastic, data = metadata_ato)
+summary(sppdiv_aov)
+
+```
+
+Figure 5: deseq2 figure
+```{r}
+#this is just the R space from running Fig 2 and 3 above#############
+load('bacteria_deseq.RData')
+
+library(DESeq2)
+library(ggplot2)
+library(viridis)
+library(tidyr)
+library(dplyr)
+library(cowplot)
+#get metadata we want
+m <- tibble::rownames_to_column(metadata_ato, "id")
+m <- m[,c(3,4,5,8,9,10)]
+idx <- m$X16S_fasta_name
+
+#load in data 
+r <- as.data.frame(t(unique.ato))
+r <- tibble::rownames_to_column(r, "seq")
+
+#save sequences
+sequence_2_count <- data.frame(count = 1:nrow(r))
+sequence_2_count$seq <- r$seq
+
+#index r and m to match and format correctly
+r <- r[,c(idx)]
+r$count <- 1:nrow(r)
+r2 <- r %>%
+  select(count, everything())
+r2$seq = NULL
+
+list <- c("tp1", "tp2", "tp3", "tp4", "tp5", "tp6", "tp7", "tp8", "tp9", "TP10", "TP11", "TP12", "TP13", "TP14", "TP15")
+
+sig_padj <- data.frame(matrix(ncol=7,nrow=0, dimnames=list(NULL, c("baseMean","log2FoldChange", "lfcSE","stat","pvalue" ,"padj" ,"timepoint"))))
+
+for (i in list) { 
+#limit m and r to just one timepoint
+print(i)
+m2 <- m[grepl( i , m$X16S_fasta_name) , ]
+r3 <- r2[ , grepl( i , names(r2)) ]
+r3$count <- 1:nrow(r3)
+r3 <- r3 %>% select(count, everything())
+
+#run deseq
+dds <- DESeqDataSetFromMatrix(countData=round(r3), 
+                              colData=m2, 
+                              design=~ppno, tidy = TRUE)
+dds <- DESeq(dds)
+res <- results(dds)
+res2 <- data.frame(res[order(res$padj),])
+res2 <- na.omit(res2[res2$padj <= 0.05 , ])
+res2$tindex <- rownames(res2)
+
+#add significant rows from each run to final datasheet
+if (nrow(res2) > 0) {
+res2$timepoint <- i
+sig_padj <- rbind(sig_padj, res2)
+}
+}
+sig_padj <- na.omit(sig_padj)
+
+#reset par
+par(mfrow=c(1,1))
+# Make a basic volcano plot
+with(sig_padj, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-40,40), ylim = c(0,20)))
+# Add colored points: blue if padj<0.01, red if log2FC>1 and padj<0.05)
+with(subset(sig_padj, padj<.05 ), points(log2FoldChange, -log10(pvalue), pch=20, col="blue"))
+with(subset(sig_padj, padj<.01 & abs(log2FoldChange)>2), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+
+#add species names 
+lab.Row <- maps[sequence_2_count[sig_padj$tindex, 'seq'], 'taxon']
+sig_padj$taxa <- lab.Row
+sig_padj$taxa<-gsub("_", " ", sig_padj$taxa)
+sig_padj$taxa<-gsub("-", " ", sig_padj$taxa)
+sig_padj$taxa<- sig_padj$taxa %>% replace_na("Spirochaeta thermophila")
+#add week
+time_point = c("tp1", "tp2", "tp3", "tp4", "tp5", "tp6", "tp7", "tp8", "tp9", "TP10", "TP11", "TP12", "TP13", "TP14", "TP15")	
+week = c(1,2,3,4,6,8,10,12,16,20,24,30,36,43,52)
+metadata_time <- data.frame(time_point, week)
+rownames(metadata_time) <- metadata_time$time_point                            
+sig_padj$week <- metadata_time[sig_padj$timepoint, 'week']
+sig_padj$count <- 1:nrow(sig_padj)
+
+#plot over time
+library(ggplot2)
+library(viridis)
+#only add names to big boys
+names <- na.omit(sig_padj[sig_padj$log2FoldChange <= -22.5 , ])
+
+sig_padj_bact <- sig_padj
+
+# plot bacteria
+BACT <- ggplot(sig_padj, aes(y=log2FoldChange, x=week, fill=padj, group = count)) + 
+  geom_bar(stat = 'identity', position = position_dodge(width = 2)) +
+  geom_text(data = names, aes(label=taxa), hjust = 1, vjust=0.5, angle =50, position = position_dodge(width =7), size = 3.5, check_overlap = TRUE) + 
+  scale_fill_viridis(discrete=F, name="adj. p-value") +
+  theme_bw() +
+  geom_hline(yintercept=0) + 
+  ylab("log Fold Change") + 
+  xlab("week") + 
+  ylim(-60,10) + 
+  geom_segment(aes(x=-20, y=0, xend=-20, yend=7), arrow = arrow(length=unit(.5, 'cm')))+ 
+  geom_text(x=-10, y=7, label="Sig for PP") + 
+  scale_x_continuous(limits = c(-20, 60), breaks = c(-20,0,20,40,60),label = c(" ", "0", "20", "40", "60"))+
+  ggtitle("16S Differential Abundance for PP vs. non-PP samples") +
+  theme(text = element_text(size = 16)) 
+
+
+######SAME THING FOR EUKS!!########################################################
+
+#this is just the R space from running Fig 4 and 5 above
+load('eukaryotic_deseq.RData')
+
+
+
+m <- tibble::rownames_to_column(metadata_ato, "id")
+m <- m[,c(2,4,5,8,9,10)]
+idx <- m$X18S_fasta_name
+
+#load in data 
+r <- as.data.frame(t(unique.ato))
+r <- tibble::rownames_to_column(r, "seq")
+
+#save sequences
+sequence_2_count <- data.frame(count = 1:nrow(r))
+sequence_2_count$seq <- r$seq
+
+#index r and m to match and format correctly
+r <- r[,c(idx)]
+r$count <- 1:nrow(r)
+r2 <- r %>%
+  select(count, everything())
+r2$seq = NULL
+
+list <- c("tp1", "tp2", "tp3", "tp4", "tp5", "tp6", "tp7", "tp8", "tp9", "TP10", "TP11", "TP12", "TP13", "TP14", "TP15")
+
+sig_padj <- data.frame(matrix(ncol=7,nrow=0, dimnames=list(NULL, c("baseMean","log2FoldChange", "lfcSE","stat","pvalue" ,"padj" ,"timepoint"))))
+
+for (i in list) { 
+#limit m and r to just one timepoint
+print(i)
+m2 <- m[grepl( i , m$X18S_fasta_name) , ]
+r3 <- r2[ , grepl( i , names(r2)) ]
+r3$count <- 1:nrow(r3)
+r3 <- r3 %>% select(count, everything())
+
+#run deseq
+dds <- DESeqDataSetFromMatrix(countData=round(r3), 
+                              colData=m2, 
+                              design=~ppno, tidy = TRUE)
+dds <- DESeq(dds)
+res <- results(dds)
+res2 <- data.frame(res[order(res$padj),])
+res2 <- na.omit(res2[res2$padj <= 0.05 , ])
+
+#add significant rows from each run to final datasheet
+if (nrow(res2) > 0) {
+res2$timepoint <- i
+sig_padj <- rbind(sig_padj, res2)
+}
+}
+sig_padj <- na.omit(sig_padj)
+
+#reset par
+par(mfrow=c(1,1))
+# Make a basic volcano plot
+with(sig_padj, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-40,40), ylim = c(0,20)))
+# Add colored points: blue if padj<0.01, red if log2FC>1 and padj<0.05)
+with(subset(sig_padj, padj<.05 ), points(log2FoldChange, -log10(pvalue), pch=20, col="blue"))
+with(subset(sig_padj, padj<.01 & abs(log2FoldChange)>2), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+
+#add species names 
+lab.Row <- maps[sequence_2_count[rownames(sig_padj), 'seq'], 'taxon']
+sig_padj$taxa <- lab.Row
+sig_padj$taxa<-gsub("_", " ", sig_padj$taxa)
+sig_padj$taxa<-gsub("-", " ", sig_padj$taxa)
+#add week
+time_point = c("tp1", "tp2", "tp3", "tp4", "tp5", "tp6", "tp7", "tp8", "tp9", "TP10", "TP11", "TP12", "TP13", "TP14", "TP15")	
+week = c(1,2,3,4,6,8,10,12,16,20,24,30,36,43,52)
+metadata_time <- data.frame(time_point, week)
+rownames(metadata_time) <- metadata_time$time_point                            
+sig_padj$week <- metadata_time[sig_padj$timepoint, 'week']
+sig_padj$count <- 1:nrow(sig_padj)
+
+
+#plot over time
+library(ggplot2)
+library(viridis)
+#only add names to big boys
+names <- na.omit(sig_padj[sig_padj$log2FoldChange <= -22.5 , ])
+
+# plot
+EUKS <- ggplot(sig_padj, aes(y=log2FoldChange, x=week, fill=padj, group = count)) + 
+  geom_bar(stat = 'identity', position = position_dodge(width = 2)) +
+ geom_text(data = names, aes(label=taxa), hjust = 1, vjust=0.5, angle =50, position = position_dodge(width =10), size = 5) + 
+  scale_fill_viridis(discrete=F, name="adj. p-value") +
+  theme_bw() +
+  geom_hline(yintercept=0) + 
+  ylab("log Fold Change") + 
+  xlab("week") + 
+  geom_segment(aes(x=-20, y=0, xend=-20, yend=7), arrow = arrow(length=unit(.5, 'cm')))+ 
+  geom_text(x=-10, y=7, label="Sig for PP") + 
+  ylim(-60,10) + 
+  scale_x_continuous(limits = c(-20, 60), breaks = c(-20,0,20,40,60),label = c(" ", "0", "20", "40", "60"))+
+  ggtitle("18S Differential Abundance for PP vs. non-PP samples")+ 
+  theme(text = element_text(size = 16)) 
+
+setEPS()
+postscript("Fig5_DESEQ.eps",width=8.15, height = 10.06)
+plot_grid(BACT,EUKS,labels = c('A', 'B'), ncol=1)
+dev.off()
+
+
+#make SupFig2 table with all p-values 
+library("tidyverse")
+
+# Using add_column()
+sig_padj_bact <- sig_padj_bact %>%
+  add_column(kingdom = "bacteria")
+
+sig_padj <- sig_padj %>%
+  add_column(kingdom = "eukaryote")
+
+sig_padj_both <- rbind(x = sig_padj_bact[ , c( "week","kingdom", "taxa", "padj", "log2FoldChange")], y = sig_padj[ , c("week","kingdom", "taxa", "padj", "log2FoldChange")])
+
+write.csv(sig_padj_both, 'SuppFig2_deseq_p-values.csv', row.names= F)
+
+
+```
+
+Supp Figure 1: environmental data 
+```{r}
+
+e_data <- read.csv('environmental_data.csv', header = T)
+e_data2 <- na.omit(e_data)
+
+library(ggplot2)
+library(cowplot)
+
+#Final Figure 1
+setEPS()
+postscript("SuppFig1.eps",width=8.15, height = 5.03)
+p1 <- ggplot(e_data2, aes(week, PAR_Den_PM)) + 
+  geom_point(color = "#d31f2a") + theme_bw() + geom_line( size = 0.5, linetype = 2, color = "#d31f2a") +
+  labs(x = "Week", y = expression("PAR (μmol·m"^-2*"·s"^-1*")")) +
+   theme(text = element_text(size = 13)) 
+p2 <- ggplot(e_data2, aes(week, DOppm_PM)) +
+  geom_point(color = "#27ab19") + theme_bw() + geom_line( size = 0.5, linetype = 2, color = "#27ab19") + 
+  labs(x = "Week", y = expression("Dissolved O"[2]* " (mg L"^-1*")")) + 
+   theme(text = element_text(size = 14)) 
+p3 <- ggplot(e_data2, aes(week, WaterTemp_PM)) +
+  geom_point(color = "#0db5e6") + theme_bw() + geom_line( size = 0.5, linetype = 2, color = "#0db5e6") +
+  labs(x = "Week", y = expression("Water Temp ("*degree*C*")")) + 
+   theme(text = element_text(size = 15)) 
+p4 <- ggplot(e_data2, aes(week, AirTemp_PM)) +
+  geom_point() + theme_bw() + geom_line( size = 0.5, linetype = 2)+ 
+    labs(x = "Week", y = expression("Air Temp ("*degree*C*")")) + 
+   theme(text = element_text(size = 15)) 
+plot_grid(p1, p2, p3, p4, labels = c('A', 'B', 'C', 'D'), ncol=2)
+
+dev.off()
+```
+
+
+SupFig2: deseq2 p-values (see above csv of sig_padj_both)
+
+
